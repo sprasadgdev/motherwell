@@ -32,11 +32,23 @@ python -m pytest -q tests      # 59 tests: every range, boundary, unit and bad i
 | **Mali** — worst country | **~59%** |
 | Sub-Saharan Africa | **57%** |
 | Developed countries, for contrast | **8–23%** |
-| WHO target to halve anaemia by 2025 | **missed — the number went up. Deadline moved to 2030** |
+| WHO target to halve anaemia by 2025 | **missed — deadline moved to 2030** |
 | Cost of the treatment at week 24 | **iron tablets and food** |
 
-The world set a target to halve this, and the number went **up**.
+The world set a target to halve this and missed it. Among **all women aged 15 to 49** the figure
+**rose**. Among pregnant women it fell only slightly, from about 41% in 2000 to 35.5% in 2023,
+nowhere near half. WHO reports only 18 countries are making progress.
+
 The medicine is not the problem. **Nobody reads the number in time.**
+
+**Why the timing matters.** Severe bleeding after birth is the leading cause of maternal death,
+killing about 70,000 women a year. In the WOMAN-2 trial cohort of 10,561 mothers in Pakistan,
+Nigeria, Tanzania and Zambia, **every 10 g/L fall in pre-birth haemoglobin raised the odds of that
+bleeding by 29%** (aOR 1.29), and women with severe anaemia had **seven times** the odds of death or
+a near miss compared with moderate anaemia.
+
+MotherWell does not prevent deaths, and does not claim to. It helps anaemia get **noticed and
+treated in time**, while there are still months left to treat it.
 
 ---
 
@@ -46,9 +58,11 @@ When a pregnant woman has a blood test, the lab machine does not know she is pre
 So the reference ranges printed on her report are the ranges for a **normal, non-pregnant person**.
 The clinic staff may not point this out either.
 
-Take Jane, an Indian woman, 24 weeks pregnant. She gets her report and either worries about a value
+Take Lakshmi, 24 weeks pregnant, in Bihar. She gets her report and either worries about a value
 that is perfectly normal for pregnancy, or she misses one that is a real problem. She does not know
 what to ask. Her doctor is busy and has minutes, not hours, so it can be missed there too.
+
+*Lakshmi is synthetic test record R-002. No real patient data was used at any point.*
 
 By the time it is noticed it is often too late to recover properly before the birth.
 **Finding it early is what keeps the mother and the baby safe.**
@@ -67,7 +81,7 @@ mother: values + pregnancy week + where she is
         |
         v
  [ Analyser agent ]  --must call-->  check_values(values, week)
-        |                            plain Python - WHO ranges by trimester
+        |                            plain Python - pregnancy ranges by trimester
         |                            NO AI INSIDE
         |<-- flags: metric, value, range, LOW/HIGH --+
         v
@@ -82,6 +96,12 @@ mother: values + pregnancy week + where she is
 ```
 
 **The AI never decides a number. The Python decides. The AI only explains.**
+
+**Where the ranges come from, precisely.** Haemoglobin follows the WHO 2024 cutoffs by trimester,
+including 10.5 g/dL in the second. Fasting glucose follows the WHO 2013 threshold of 92 mg/dL.
+Ferritin, TSH and vitamin D follow other published antenatal guidance, not WHO — WHO itself uses a
+ferritin cutoff of 15 µg/L where this tool uses 30 ng/mL. **No obstetrician has reviewed any of
+them yet.** That review is the next step, and it is not a coding problem.
 
 **Why two agents instead of one?** A single agent would hold both the numbers and the conversation,
 so one day it would skip the tool and guess. Split apart, the Analyser **has to** call the tool, and
@@ -121,6 +141,9 @@ STEP 2  ·  ROUTING
 and carrier routing break it — and an IP address is personal data under India's DPDP Act and GDPR.
 **Taking on a privacy obligation to get a worse answer is a bad trade.**
 
+**Her region overrides her country code when the two disagree**, so a mother in Kerala holding an
+Indian number receives Malayalam, not Hindi.
+
 The region list is ordered by burden, heaviest first — **Africa before South Asia, Bihar before
 Kerala.** The file reads in the order the problem actually exists, not the order that was convenient
 to build.
@@ -149,6 +172,10 @@ MotherWell removes it **structurally**, instead of asking the model to behave:
 | **No diagnosis** | The Planner writes questions, never conclusions. Asked *"do I have anaemia?"* it refuses and redirects to the doctor |
 | **No drift on model upgrade** | The clinical logic does not live in the model, so changing the model cannot change the flags |
 | **No hidden language choice** | Every routing decision prints the signal that produced it |
+| **No skipping the tool** | An Analyser answer that did not call `check_values` is rejected and retried once. If it still refuses, it **fails closed** and says nothing about numbers |
+| **No wrong-unit judgements** | `98 g/L` and `5.8 mmol/L` are converted before comparison. Before this fix both were flagged the exact opposite of the truth. A bare number that is implausible for the expected unit is never guessed — it goes to `unchecked` |
+| **No ungrounded numbers** | A groundedness check prints any number in the Analyser's text that the tool never produced |
+| **No name sent to the model** | The model receives the report ID, never the mother's name. A name adds nothing to a blood range |
 
 The model is used for the one thing it is genuinely good at: **turning a result into kind, plain
 language a worried mother can understand — in her language.**
@@ -195,15 +222,19 @@ Note what it does **not** say: it never states a diagnosis. *"Could this mean an
 
 ---
 
-## Why not just ask ChatGPT?
+## Why not just ask a general chatbot?
 
-| | ChatGPT | MotherWell |
+Tools that explain a lab report already exist, and some are free. The difference is not what
+MotherWell can do. It is what it is **not allowed** to do.
+
+| | A general chatbot | MotherWell |
 | --- | --- | --- |
-| Same report twice | different answers | **identical flags** |
-| Where the ranges live | the model's memory | **versioned Python** |
-| Diagnoses you | often | **refuses** |
+| Same report twice | answers can vary | **identical flags, every time** |
+| Where the ranges live | the model's memory | **versioned, unit-tested Python** |
+| Pregnancy trimester ranges | not applied unless asked | **applied from the week, always** |
+| May offer a conclusion | yes | **refuses, and redirects to the doctor** |
 | Her language | if she knows to ask | **resolved from her phone, and explained** |
-| Can a clinic test it? | no | **yes — traced and evaluable** |
+| Can a clinic test it? | no | **yes — traced, evaluable, 59 tests on every push** |
 
 ---
 
@@ -224,28 +255,36 @@ Note what it does **not** say: it never states a diagnosis. *"Could this mean an
 
 | File | What it is |
 | --- | --- |
-| `amma_agents.py` | `check_values()`, the region/language config and signal cascade, the two agents, the tool-call loop |
+| `amma_tool.py` | **the deterministic tool.** Every pregnancy range, the unit conversion, the alias table. Imports no AI library, and a test proves it |
+| `amma_agents.py` | the region/language config and signal cascade, the two agents, the enforced tool-call loop |
 | `amma_deploy.py` | publishes both agents and deploys the Foundry workflow |
 | `blood_reports.json` | two synthetic test reports, each carrying a different language signal |
+| `tests/test_amma_tool.py` | **59 tests** — every range, every boundary, units, bad input, determinism |
+| `eval/eval_cases.jsonl` | **18 evaluation cases**, including a diagnosis request that must be refused |
+| `eval_agents.py` | agent-level metrics: tool-call rate, groundedness, disclaimer, no diagnosis |
+| `.github/workflows/tests.yml` | runs the tests on every push. No Azure, no secrets, no model |
+| `CHANGES.md` | every safety fix, and why it mattered |
 
 ## Running it
 
+**No Azure, no API key, no model needed for the parts that matter clinically:**
+
 ```bash
-# the 49-region language coverage table - no Azure needed
-python amma_agents.py --languages
-
-# the Python tool alone - no AI, no Azure
-python amma_agents.py --tool-only
-
-# the whole system: Analyser, routing, Planner
-python amma_agents.py
-
-# publish the agents and run the deployed Foundry workflow
-python amma_deploy.py
+python amma_tool.py                 # the tool alone, with no AI involved
+python -m pytest -q tests           # 59 tests: ranges, boundaries, units, bad input
+python amma_agents.py --languages   # the 49-region language coverage table
 ```
 
-Requires a Microsoft Foundry project and a `.env` holding `PROJECT_CONNECTION_STRING`
-and `MODEL_DEPLOYMENT_NAME`. The `.env` is never committed.
+**With a Microsoft Foundry project** (`pip install -r requirements.txt` first):
+
+```bash
+python amma_agents.py               # the whole system: Analyser, routing, Planner
+python amma_deploy.py               # publish the agents, run the deployed workflow
+python eval_agents.py               # agent metrics: tool-call rate, groundedness, safety
+```
+
+The Foundry commands need a `.env` holding `PROJECT_CONNECTION_STRING` and
+`MODEL_DEPLOYMENT_NAME` — copy `.env.example` to start. The `.env` is never committed.
 
 **Hackathon lab work:** the five Foundry challenges this was built from are in
 [sprasadgdev/FrontierWeekHack](https://github.com/sprasadgdev/FrontierWeekHack).
@@ -271,6 +310,14 @@ This is a prototype, not a medical device.
 NGOs and public maternal-health programmes first — they are measured on outcomes rather than
 liability — then clinics and hospital chains. **Starting where the burden is highest**, not where it
 is most convenient.
+
+**The timing fits.** On 29 June 2026 India's Anemia Mukt Bharat Abhiyaan moved from *Test, Treat and
+Talk* to **Test, Treat, Talk and Track**, adding digital tracking of haemoglobin for pregnant women.
+The programme already tests and treats. MotherWell is built for **Talk and Track**.
+
+**And it does not need the mother to own a smartphone.** In the highest-burden districts the
+realistic first user is the **ASHA or ANM health worker** who already sits with her. The worker runs
+it on her behalf, and the mother still receives her own document in her own language.
 
 ---
 
