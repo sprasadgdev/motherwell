@@ -5,13 +5,27 @@
 Two agents on **Microsoft Foundry** (gpt-5.4), one deterministic Python tool, deployed as a traced
 workflow. Built for the Founderz × Microsoft Agent Architect hackathon, September 2026.
 
+[![tool-tests](https://github.com/sprasadgdev/motherwell/actions/workflows/tests.yml/badge.svg)](https://github.com/sprasadgdev/motherwell/actions/workflows/tests.yml)
+
+### Check it yourself in one minute
+
+No Azure account, no API key and no model are needed to verify the part that matters, because
+every clinical range lives in plain Python.
+
+```bash
+python amma_tool.py            # the tool alone, no AI involved
+python -m pytest -q tests      # 59 tests: every range, boundary, unit and bad input
+```
+
+`amma_tool.py` imports nothing from any AI library, and one of the tests asserts exactly that.
+
 ---
 
 ## Why this matters
 
 | | |
 | --- | --- |
-| Pregnant women anaemic, worldwide | **~50%** |
+| Pregnant women anaemic, worldwide | **35.5%** (WHO, 2023 estimate) |
 | **India** — largest absolute burden | **52.2%, and rising** (was 50.4%) |
 | **Bihar** — worst state in India | **63.1%** |
 | Also above 60% | Gujarat · West Bengal · Odisha · Tripura |
