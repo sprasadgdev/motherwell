@@ -350,7 +350,10 @@ def main():
 
     analyses = []
     for r in reports:
-        text = (f"Report {r['report_id']} for {r['mother']}, week {r['week']}. "
+        # The model is given the report ID, never her name. Her name stays on this
+        # machine, in the printed document below. A name adds nothing to a blood
+        # range, so sending it would be collecting personal data for no purpose.
+        text = (f"Report {r['report_id']}, week {r['week']}. "
                 f"Values: {json.dumps(r['values'])}. Use check_values and explain the flags.")
         out, tool_json, stray = analyse(openai, analyser, text)
         document(f"{r['report_id']}  ·  {r['mother']}",
