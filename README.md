@@ -299,6 +299,11 @@ The Foundry commands need a `.env` holding `PROJECT_CONNECTION_STRING` and
   automatically. For a lab or hospital, the data would arrive directly from their system instead.
 - **Not clinically validated.** The ranges come from WHO guidance, but **no clinician has reviewed
   them.**
+- **No altitude or smoking adjustment.** The WHO 2024 guideline says haemoglobin should be adjusted
+  for altitude and for smoking before applying a cutoff. This tool does **not** do that yet, so a
+  mother in Nepal, Ethiopia, Bolivia or Peru could be told her haemoglobin is normal when, adjusted
+  for where she lives, it is not. It is a known gap, not an oversight, and it is the next range
+  change after clinical review.
 - **Translations not reviewed.** 29 languages are configured; **two have been checked by eye.** No
   clinical translator has reviewed any of them.
 - **Synthetic data only.** No real patient data has been used.
