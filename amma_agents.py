@@ -180,6 +180,31 @@ def print_language_table() -> None:
     print("    1 and 2 are certain. 3 to 6 are a guess, so her document asks her to confirm.\n")
 
 
+def print_routing() -> None:
+    """Show the language decision for each report. Pure Python - no Azure, no cost.
+    Her name is printed here, on this machine only. It is never sent to the model."""
+    banner("MOTHERWELL  ·  routing",
+           "language follows the mother, not the developer")
+    reports = json.loads(REPORTS_PATH.read_text())["reports"]
+    print(f"\n  {'REPORT':<9}{'MOTHER':<11}{'REGION':<16}{'LANGUAGE':<13}DECIDED BY")
+    print("  " + "-" * (W - 4))
+    for r in reports:
+        lang, why, certain = detect_language(chosen=r.get("language", ""),
+                                             locale=r.get("locale", ""),
+                                             phone=r.get("phone", ""),
+                                             region=r.get("region", ""),
+                                             clinic_region=r.get("clinic_region", ""))
+        print(f"  {r['report_id']:<9}{r['mother']:<11}{r.get('region', '-'):<16}{lang:<13}{why}"
+              + ("" if certain else "  a guess - she is asked to confirm"))
+    print("  " + "-" * (W - 4))
+    print("\n  Signals, strongest first:")
+    print("    1. she chose it     2. device locale     3. phone country code")
+    print("    4. her region       5. clinic region     6. English")
+    print("    1 and 2 are certain. 3 to 6 are a guess, so her document asks her to confirm.")
+    print("\n  IP geolocation is deliberately not used: less accurate than the")
+    print("  device locale, and personal data under DPDP and GDPR.\n")
+
+
 # ------------------------------- Azure wiring -------------------------------
 # FIX: Azure imports are optional, so --tool-only and --languages run with no SDK.
 try:
@@ -356,6 +381,10 @@ def workflow_input(reports) -> str:
 def main():
     if "--languages" in sys.argv:
         print_language_table()
+        return
+
+    if "--routing" in sys.argv:
+        print_routing()
         return
 
     if "--tool-only" in sys.argv:

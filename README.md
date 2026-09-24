@@ -294,6 +294,7 @@ MotherWell can do. It is what it is **not allowed** to do.
 python amma_tool.py                 # the tool alone, with no AI involved
 python -m pytest -q tests           # 92 tests: ranges, boundaries, units, bad input, contract
 python amma_agents.py --languages   # the 49-region language coverage table
+python amma_agents.py --routing     # each mother's language, and whether it is certain or a guess
 ```
 
 **With a Microsoft Foundry project** (`pip install -r requirements.txt` first):
