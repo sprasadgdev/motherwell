@@ -1,4 +1,4 @@
-# Foundry agents. The deterministic tool and its 59 tests need none of these.
+# Foundry agents. The deterministic tool and its tests need none of these.
 azure-ai-projects
 azure-identity
 openai

@@ -14,7 +14,7 @@ every clinical range lives in plain Python.
 
 ```bash
 python amma_tool.py            # the tool alone, no AI involved
-python -m pytest -q tests      # 59 tests: every range, boundary, unit and bad input
+python -m pytest -q tests      # 92 tests: every range, boundary, unit, bad input, agent contract
 ```
 
 `amma_tool.py` imports nothing from any AI library, and one of the tests asserts exactly that.
@@ -89,8 +89,8 @@ mother: values + pregnancy week + where she is
         |
         v
  [ Planner agent ]  -->  3 questions for the doctor
-                         1 food note
-                         when to re-test
+                         1 general food note (no supplement, no dose)
+                         "ask your doctor when to re-test" (no number of weeks)
                          "not medical advice"
                          ...written twice: her language, and English
 ```
@@ -105,9 +105,21 @@ them yet.** That review is the next step, and it is not a coding problem.
 
 **Why two agents instead of one?** A single agent would hold both the numbers and the conversation,
 so one day it would skip the tool and guess. Split apart, the Analyser **has to** call the tool, and
-the Planner never sees the raw report — only what the tool returned — so it **cannot introduce a
-number the tool did not produce.** It is not a rule the model is asked to follow. It is enforced by
-the shape of the system.
+the Planner receives only the tool's flags, so **every number it can quote came from the tool.** It is
+not a rule the model is asked to follow. It is enforced by the shape of the system, and by tests.
+
+**Exactly what crosses each boundary**
+
+| From → to | What crosses | What never crosses |
+| --- | --- | --- |
+| Mother → Analyser | report ID, pregnancy week, values as printed | her name |
+| Analyser → tool | `{values, week}` | — |
+| Tool → Planner | `week`, `trimester`, `flags`, `unchecked`, `week_sensitive`, `error` (`PLANNER_FIELDS`). Each flag carries its value, unit, range and LOW or HIGH, which is why a question can quote *"9.8 g/dL"* | in-range values, the report, her name, the Analyser's text |
+| Deployed portal workflow | the same flag view, for both agents | the full report, in-range values, her name |
+
+The raw values reach the Analyser only, because it must pass them to the tool. In the portal both
+agents share one conversation, so the Planner there also reads the Analyser's explanation of those
+same flags. `tests/test_contract.py` fails if anything else crosses.
 
 ---
 
@@ -118,23 +130,26 @@ the shape of the system.
 **49 regions, 29 languages.** The reply language is resolved from the strongest signal available, and
 every decision is printed with the reason that produced it:
 
-| # | Signal | Example |
-| --- | --- | --- |
-| 1 | **She chose it** | always wins |
-| 2 | **Device locale** | `ml-IN` → Malayalam |
-| 3 | **Phone country code** | `+91` → Hindi |
-| 4 | **Her region** | Bihar → Hindi |
-| 5 | **Clinic region** | the lab that sent the report |
-| 6 | **English** | last resort |
+| # | Signal | Example | Certain? |
+| --- | --- | --- | --- |
+| 1 | **She chose it** | always wins | yes |
+| 2 | **Device locale** | `ml-IN` → Malayalam | yes |
+| 3 | **Phone country code** | `+91` → Hindi | **a guess** — `+91` covers more than twenty languages |
+| 4 | **Her region** | Bihar → Hindi | a guess |
+| 5 | **Clinic region** | the lab that sent the report | a guess |
+| 6 | **English** | last resort | a guess |
 
-Live output from a run:
+**When the language is a guess, her document opens by saying so and inviting her to choose another.**
+Only her own choice or her device's language setting is treated as certain.
+
+What the routing step prints:
 
 ```
 STEP 2  ·  ROUTING
            language follows the mother, not the developer.
 ------------------------------------------------------------------
   R-001   Kerala          ->  Malayalam     [device locale (ml-IN)]
-  R-002   Bihar           ->  Hindi         [phone country code (+91)]
+  R-002   Bihar           ->  Hindi         [phone country code (+91)]  a guess - she is asked to confirm
 ```
 
 **IP geolocation is deliberately not used.** It is less accurate than the phone's own locale — VPNs
@@ -170,12 +185,16 @@ MotherWell removes it **structurally**, instead of asking the model to behave:
 | **No invented numbers** | Every range lives in `check_values()` — versioned Python. The model cannot compute a clinical value. It can only ask for one |
 | **No silent omissions** | Any value the tool does not recognise is returned in an `unchecked` list and reported to the mother, never quietly dropped |
 | **No diagnosis** | The Planner writes questions, never conclusions. Asked *"do I have anaemia?"* it refuses and redirects to the doctor |
+| **No clinical number from the model** | The Planner never states a retest interval, a dose or a supplement. "Next check" asks her doctor when to repeat the tests. `eval_agents.py` fails any output such as *"in 2 weeks"* |
+| **No urgent value left waiting** | Haemoglobin below 7.0 g/dL (WHO 2024: severe) is marked `urgent` by the Python tool, and her document opens with *"contact your doctor or health worker today"*. Not a diagnosis: an instruction not to wait |
+| **No hidden trimester flip** | A result that would change if the week were one week earlier or later is listed as `week_sensitive`, and one question asks the doctor to confirm the week |
+| **Every flag traceable** | Every tool output carries `ranges_version`. The history of the ranges is the git history of one file, `amma_tool.py` |
 | **No drift on model upgrade** | The clinical logic does not live in the model, so changing the model cannot change the flags |
 | **No hidden language choice** | Every routing decision prints the signal that produced it |
 | **No skipping the tool** | An Analyser answer that did not call `check_values` is rejected and retried once. If it still refuses, it **fails closed** and says nothing about numbers |
 | **No wrong-unit judgements** | `98 g/L` and `5.8 mmol/L` are converted before comparison. Before this fix both were flagged the exact opposite of the truth. A bare number that is implausible for the expected unit is never guessed — it goes to `unchecked` |
 | **No ungrounded numbers** | A groundedness check prints any number in the Analyser's text that the tool never produced |
-| **No name sent to the model** | The model receives the report ID, never the mother's name. A name adds nothing to a blood range |
+| **No name sent to the model** | The model receives the report ID, never the mother's name, in the local run and in the deployed workflow. A name adds nothing to a blood range |
 
 The model is used for the one thing it is genuinely good at: **turning a result into kind, plain
 language a worried mother can understand — in her language.**
@@ -184,7 +203,8 @@ language a worried mother can understand — in her language.**
 
 ## Real output
 
-From an actual run. Lakshmi, week 24, Bihar.
+From an actual run of the submitted version (22 September). Lakshmi, week 24, Bihar.
+Since the review on 24 September, "Next check" no longer gives a number of weeks: it asks the doctor.
 
 **The tool returns** (simplified from its JSON):
 
@@ -234,7 +254,7 @@ MotherWell can do. It is what it is **not allowed** to do.
 | Pregnancy trimester ranges | not applied unless asked | **applied from the week, always** |
 | May offer a conclusion | yes | **refuses, and redirects to the doctor** |
 | Her language | if she knows to ask | **resolved from her phone, and explained** |
-| Can a clinic test it? | no | **yes — traced, evaluable, 59 tests on every push** |
+| Can a clinic test it? | no | **yes — traced, evaluable, 92 tests on every push** |
 
 ---
 
@@ -259,9 +279,10 @@ MotherWell can do. It is what it is **not allowed** to do.
 | `amma_agents.py` | the region/language config and signal cascade, the two agents, the enforced tool-call loop |
 | `amma_deploy.py` | publishes both agents and deploys the Foundry workflow |
 | `blood_reports.json` | two synthetic test reports, each carrying a different language signal |
-| `tests/test_amma_tool.py` | **59 tests** — every range, every boundary, units, bad input, determinism |
-| `eval/eval_cases.jsonl` | **18 evaluation cases**, including a diagnosis request that must be refused |
-| `eval_agents.py` | agent-level metrics: tool-call rate, groundedness, disclaimer, no diagnosis |
+| `tests/test_amma_tool.py` | tests for every range, every boundary, units, bad input, urgency, determinism |
+| `tests/test_contract.py` | the data contract between the agents, and the language rule |
+| `eval/eval_cases.jsonl` | **29 evaluation cases**, including a diagnosis request that must be refused, extreme values, trimester ambiguity, data-entry errors and mixed-language reports |
+| `eval_agents.py` | agent-level metrics: tool-call rate, groundedness, disclaimer, no diagnosis, no retest interval, urgent escalation |
 | `.github/workflows/tests.yml` | runs the tests on every push. No Azure, no secrets, no model |
 | `CHANGES.md` | every safety fix, and why it mattered |
 
@@ -271,7 +292,7 @@ MotherWell can do. It is what it is **not allowed** to do.
 
 ```bash
 python amma_tool.py                 # the tool alone, with no AI involved
-python -m pytest -q tests           # 59 tests: ranges, boundaries, units, bad input
+python -m pytest -q tests           # 92 tests: ranges, boundaries, units, bad input, contract
 python amma_agents.py --languages   # the 49-region language coverage table
 ```
 
@@ -291,6 +312,29 @@ The Foundry commands need a `.env` holding `PROJECT_CONNECTION_STRING` and
 
 ---
 
+## After review: 24 September 2026
+
+The project received detailed review feedback on the Founderz platform the day after submission.
+Every point was checked against the code, and these changed:
+
+| Point raised | What changed |
+| --- | --- |
+| *"Next check in two weeks"* and the food note may act as clinical advice | The Planner never states a retest interval, a dose or a supplement. A number of weeks chosen by the model is a clinical number, which broke this project's own rule |
+| The Planner "never sees raw values", yet a question quotes 9.8 g/dL | The contract is now stated exactly (table above) and enforced by tests. The deployed workflow sent the full tool output and the mother's name; it now sends only the flag view |
+| `+91` cannot decide Hindi | Only her choice or her device is certain. Anything weaker is confirmed with her in the first line |
+| Escalation, extreme values | Haemoglobin below 7.0 g/dL is marked `urgent` in Python |
+| Values on a trimester threshold | `week_sensitive`: the doctor is asked to confirm the week |
+| Missing units, conflicting formats, data-entry errors | 11 new evaluation cases, E19 to E29 |
+| How ranges are versioned and audited | `ranges_version` on every tool output |
+
+**Corrections to the submitted PDF.** Page 3 and Figure 12 show *"Next check: In 2 weeks"*: the model
+chose that interval, and it has been removed. Pages 4 and 9 and Figure 5 say the Planner cannot see a raw
+number: the flags carry the flagged value, as the exact contract above states. Pages 3 and 4 say she can
+override the language at any time: at submission that was a data field only; a guessed language is now
+confirmed in her first line. Page 12 says each range has a date: at submission ranges had a source but
+no version; they are now versioned. Figure 12 shows the deployed workflow used the (synthetic) mother's
+name; it no longer receives it.
+
 ## Honest status
 
 - **Working:** two agents deployed on Microsoft Foundry, orchestrated as a workflow, fully traced,
@@ -307,6 +351,10 @@ The Foundry commands need a `.env` holding `PROJECT_CONNECTION_STRING` and
 - **Translations not reviewed.** 29 languages are configured; **two have been checked by eye.** No
   clinical translator has reviewed any of them.
 - **Synthetic data only.** No real patient data has been used.
+- **One urgent rule only.** Haemoglobin below 7.0 is escalated. Other urgent thresholds, and danger
+  symptoms such as bleeding or a severe headache, are not handled yet. A clinician must define them.
+- **The 24 September changes to the agents' instructions have not yet been re-run on Foundry.** The
+  tool and the data contract are verified by the tests; the new wording of the agents' output is not.
 
 This is a prototype, not a medical device.
 

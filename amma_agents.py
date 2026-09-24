@@ -100,7 +100,11 @@ def detect_language(chosen: str = "", locale: str = "", phone: str = "",
                     region: str = "", clinic_region: str = "") -> tuple:
     """
     Resolve the mother's language from the strongest signal available.
-    Returns (language, which_signal_decided) so the choice is always explainable.
+    Returns (language, which_signal_decided, certain) so the choice is always explainable.
+
+    Only her own choice and her device's language setting are certain. A phone country
+    code or a region is a guess: +91 alone covers more than twenty languages. When the
+    language is a guess, her document opens by telling her so and inviting her to change it.
 
     In production these arrive from the channel: the web request's Accept-Language
     header, or the WhatsApp sender's number. Here they come from the record so the
@@ -108,11 +112,11 @@ def detect_language(chosen: str = "", locale: str = "", phone: str = "",
     accurate than the device locale and it is personal data under DPDP and GDPR.
     """
     if chosen:
-        return chosen, "she chose it"
+        return chosen, "she chose it", True
     if locale:
         code = locale.split("-")[0].lower()
         if code in LOCALE_LANGUAGE:
-            return LOCALE_LANGUAGE[code], f"device locale ({locale})"
+            return LOCALE_LANGUAGE[code], f"device locale ({locale})", True
     if phone:
         digits = phone.replace(" ", "")
         for code in sorted(PHONE_CODE_LANGUAGE, key=len, reverse=True):
@@ -123,13 +127,13 @@ def detect_language(chosen: str = "", locale: str = "", phone: str = "",
                 # so a Kerala mother with an Indian number gets Malayalam, not Hindi.
                 if region in REGION_LANGUAGE and REGION_LANGUAGE[region]["language"] != lang:
                     return (REGION_LANGUAGE[region]["language"],
-                            f"her region ({region}), more specific than {code}")
-                return lang, f"phone country code ({code})"
+                            f"her region ({region}), more specific than {code}", False)
+                return lang, f"phone country code ({code})", False
     if region in REGION_LANGUAGE:
-        return REGION_LANGUAGE[region]["language"], f"her region ({region})"
+        return REGION_LANGUAGE[region]["language"], f"her region ({region})", False
     if clinic_region in REGION_LANGUAGE:
-        return REGION_LANGUAGE[clinic_region]["language"], f"clinic region ({clinic_region})"
-    return DEFAULT_LANGUAGE, "fallback - no signal available"
+        return REGION_LANGUAGE[clinic_region]["language"], f"clinic region ({clinic_region})", False
+    return DEFAULT_LANGUAGE, "fallback - no signal available", False
 
 
 # --------------------------- terminal presentation -------------------------
@@ -172,7 +176,8 @@ def print_language_table() -> None:
     print("\n  Signals used to pick one, strongest first:")
     print("    1. she chose it   2. device locale   3. phone country code")
     print("    4. her region     5. clinic region   6. English")
-    print("    (her region overrides a country code when the two disagree)\n")
+    print("    (her region overrides a country code when the two disagree)")
+    print("    1 and 2 are certain. 3 to 6 are a guess, so her document asks her to confirm.\n")
 
 
 # ------------------------------- Azure wiring -------------------------------
@@ -220,22 +225,33 @@ Copy every value exactly as printed on the report, including its unit.
 Report only what the tool returns: for each flagged value give the value, the expected range for this
 trimester, and whether it is LOW or HIGH, in plain words a worried mother can understand.
 If the tool returns anything under "unchecked", or an "error", say clearly that those values were NOT checked.
+If any flag has "urgent": true, say that first, plainly: she should contact her doctor or health worker today.
+If anything is listed under "week_sensitive", say the doctor should confirm her pregnancy week for that value.
+Do not mention ranges_version; it is for the audit trail, not for her.
 Never state a range from your own memory. Never diagnose a condition. Never recommend medicine.
 If all values are in range, say so kindly. Be short and structured.
 """
 
 PLANNER_INSTRUCTIONS = """
-You are the Planner for MotherWell. You receive the JSON flags returned by the check_values tool.
-You never see the raw blood report, only what the tool returned,
-and you must never introduce a number the tool did not produce.
+You are the Planner for MotherWell. You receive only what the check_values tool returned:
+the pregnancy week, the trimester, each flagged value with its unit, range and LOW or HIGH,
+anything the tool could not check, and any week-sensitive result.
+You never see the blood report itself, any value that was in range, or the mother's name.
+Never introduce a number the tool did not produce. That includes time: never say when to re-test
+or how many days or weeks to wait. Only her doctor decides that.
 Write ONE plan, entirely in the language named in the request. Use no other language anywhere.
-The plan has exactly four parts, in this order, with the part names written in that same language:
+If any flag has "urgent": true, begin with this sentence, translated into that language:
+  "Please contact your doctor or health worker today. Do not wait for your next appointment."
+If the request says her language was guessed, next write one short line saying this language was
+chosen for her, and she can ask for a different one.
+Then the plan has exactly four parts, in this order, with the part names written in that same language:
   Questions for your doctor - exactly three specific questions based on the flags
-  Food note - one sentence
-  Next check - when to re-test, in weeks
+  Food note - one general sentence about everyday food. Never name a supplement, medicine, dose or amount.
+  Next check - one sentence asking her doctor when these tests should be repeated. No number of days or weeks.
   Then this sentence, translated into that language:
   "This is information, not medical advice. Please discuss with your doctor."
 If anything is listed as unchecked, one question must ask the doctor to look at those values.
+If anything is listed as week_sensitive, one question must ask the doctor to confirm her pregnancy week.
 Write it as plain text a worried mother can read on a phone. Do not use markdown headings.
 Never print words taken from these instructions, such as "closing line" or "plan".
 If the flags list is empty, say so kindly and still give one general question and the final sentence.
@@ -310,12 +326,31 @@ def analyse(openai, analyser, text):
     return FAIL_CLOSED, None, []
 
 
+# The data contract between the tool and the Planner: these fields cross, nothing else.
+# Flags carry the flagged value itself (so a question can quote "9.8 g/dL"), but in-range
+# values ("all_values"), the report, and her name never cross. tests/test_contract.py enforces it.
+PLANNER_FIELDS = ("week", "trimester", "flags", "unchecked", "week_sensitive", "error")
+
+
 def planner_input(tool_json: str) -> str:
-    """FIX: the Planner gets exactly what the tool returned (flags and unchecked),
+    """FIX: the Planner gets exactly the PLANNER_FIELDS of what the tool returned,
     not the Analyser's prose and not the raw report."""
     data = json.loads(tool_json)
-    return json.dumps({k: data.get(k) for k in ("week", "trimester", "flags", "unchecked", "error")
-                       if k in data}, indent=2)
+    return json.dumps({k: data.get(k) for k in PLANNER_FIELDS if k in data}, indent=2)
+
+
+def workflow_input(reports) -> str:
+    """The input for the deployed portal workflow.
+
+    The portal cannot run Python, so the tool runs here first. In the portal both agents read
+    the same conversation, so only the Planner's view of each result is sent: never the full
+    report, never an in-range value, never her name.
+    """
+    blocks = [f"Report {r['report_id']}.\ncheck_values() returned:\n"
+              f"{planner_input(check_values(r['values'], r['week']))}" for r in reports]
+    return ("The check_values tool has ALREADY been run for each report below and its exact "
+            "output is included. Do NOT call the tool again. Use only these numbers and ranges - "
+            "never state a range of your own.\n\n" + "\n\n".join(blocks))
 
 
 def main():
@@ -360,28 +395,30 @@ def main():
                  f"week {r['week']}  ·  {r.get('region', 'unknown region')}", out)
         print(f"  tool called: {'yes' if tool_json else 'NO - failed closed'}"
               f"   groundedness: {'OK' if not stray else 'numbers not from the tool: ' + ', '.join(stray)}")
-        lang, why = detect_language(chosen=r.get("language", ""),
-                                    locale=r.get("locale", ""),
-                                    phone=r.get("phone", ""),
-                                    region=r.get("region", ""),
-                                    clinic_region=r.get("clinic_region", ""))
-        analyses.append((r["report_id"], r.get("region", ""), lang, why, tool_json))
+        lang, why, certain = detect_language(chosen=r.get("language", ""),
+                                             locale=r.get("locale", ""),
+                                             phone=r.get("phone", ""),
+                                             region=r.get("region", ""),
+                                             clinic_region=r.get("clinic_region", ""))
+        analyses.append((r["report_id"], r.get("region", ""), lang, why, certain, tool_json))
 
     step("2", "ROUTING", "language follows the mother, not the developer.")
-    for report_id, region, lang, why, _ in analyses:
-        print(f"  {report_id}   {region:<15} ->  {lang:<12}  [{why}]")
+    for report_id, region, lang, why, certain, _ in analyses:
+        print(f"  {report_id}   {region:<15} ->  {lang:<12}  [{why}]"
+              + ("" if certain else "  a guess - she is asked to confirm"))
 
     step("3", "PLANNER", "three questions for her doctor. One document per reader.")
     planner = create_agent(client, "amma-planner", PLANNER_INSTRUCTIONS)
     print(f"  created {planner.name} v{planner.version}")
 
     # One clean document per reader. She never scrolls past a language she cannot read.
-    for report_id, region, lang, why, tool_json in analyses:
+    for report_id, region, lang, why, certain, tool_json in analyses:
         if tool_json is None:
             document("FOR THE MOTHER", f"{report_id}  ·  not checked", FAIL_CLOSED)
             continue
         flags = planner_input(tool_json)
-        mother, _ = run_agent(openai, planner, f"Write the plan in {lang}.\n\nTool flags:\n{flags}")
+        guessed = "" if certain else " Her language was guessed, not chosen by her."
+        mother, _ = run_agent(openai, planner, f"Write the plan in {lang}.{guessed}\n\nTool flags:\n{flags}")
         document("FOR THE MOTHER", f"{report_id}  ·  {region}  ·  {lang}  ·  {why}", mother)
         doctor, _ = run_agent(openai, planner, f"Write the plan in English.\n\nTool flags:\n{flags}")
         document("FOR HER DOCTOR", f"{report_id}  ·  English", doctor)

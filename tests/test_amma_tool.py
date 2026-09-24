@@ -9,7 +9,7 @@ import pytest
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-from amma_tool import RANGES, check_values, normalise, trimester  # noqa: E402
+from amma_tool import RANGES, RANGES_VERSION, check_values, normalise, trimester  # noqa: E402
 
 CASES = [json.loads(line) for line in (ROOT / "eval" / "eval_cases.jsonl").read_text().splitlines() if line.strip()]
 
@@ -26,6 +26,10 @@ def test_eval_case(case):
     assert {f["metric"]: f["status"] for f in out["flags"]} == exp["flags"], case["case"]
     assert sorted(u["metric"] for u in out["unchecked"]) == sorted(exp["unchecked"]), case["case"]
     assert ("error" in out) == exp.get("error", False), case["case"]
+    if "urgent" in exp:
+        assert sorted(f["metric"] for f in out["flags"] if f.get("urgent")) == sorted(exp["urgent"]), case["case"]
+    if "week_sensitive" in exp:
+        assert sorted(w["metric"] for w in out["week_sensitive"]) == sorted(exp["week_sensitive"]), case["case"]
 
 
 def test_dataset_covers_the_documented_cases():
@@ -91,6 +95,23 @@ def test_duplicate_metric_is_reported():
 
 def test_week_as_text():
     assert run({"haemoglobin": 9.8}, "24 weeks")["trimester"] == 2
+
+
+# ---------------------------------------------------------------- escalation, week, audit
+@pytest.mark.parametrize("hb, urgent", [(4.0, True), (6.9, True), (7.0, False), (9.8, False)])
+def test_urgent_only_below_the_who_severe_cutoff(hb, urgent):
+    flag = run({"haemoglobin": hb}, 24)["flags"][0]
+    assert flag.get("urgent", False) is urgent
+
+
+def test_week_sensitive_only_next_to_a_trimester_change():
+    sensitive = [w for w in range(10, 32) if run({"haemoglobin": 10.7}, w)["week_sensitive"]]
+    assert sensitive == [13, 14, 27, 28]
+
+
+@pytest.mark.parametrize("week", [24, 60])
+def test_every_output_carries_the_ranges_version(week):
+    assert run({"haemoglobin": 9.8}, week)["ranges_version"] == RANGES_VERSION
 
 
 def test_tool_module_has_no_ai_dependencies():
