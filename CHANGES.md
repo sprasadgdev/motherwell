@@ -13,7 +13,7 @@
 | How the ranges are versioned and audited | `RANGES_VERSION` in `amma_tool.py`, carried on every tool output. The history is the git history of that one file | unit test |
 | The deploy script reused existing agents | `amma_deploy.py` publishes a new version of both agents, so the workflow runs the instructions in this repo | |
 
-`python -m pytest -q tests`: 92 passed.
+`python -m pytest -q tests`: 93 passed.
 
 ## 23 September 2026: safety fixes before submission
 

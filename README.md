@@ -14,7 +14,7 @@ every clinical range lives in plain Python.
 
 ```bash
 python amma_tool.py            # the tool alone, no AI involved
-python -m pytest -q tests      # 92 tests: every range, boundary, unit, bad input, agent contract
+python -m pytest -q tests      # 93 tests: every range, boundary, unit, bad input, agent contract
 ```
 
 `amma_tool.py` imports nothing from any AI library, and one of the tests asserts exactly that.
@@ -254,7 +254,7 @@ MotherWell can do. It is what it is **not allowed** to do.
 | Pregnancy trimester ranges | not applied unless asked | **applied from the week, always** |
 | May offer a conclusion | yes | **refuses, and redirects to the doctor** |
 | Her language | if she knows to ask | **resolved from her phone, and explained** |
-| Can a clinic test it? | no | **yes — traced, evaluable, 92 tests on every push** |
+| Can a clinic test it? | no | **yes — traced, evaluable, 93 tests on every push** |
 
 ---
 
@@ -292,7 +292,7 @@ MotherWell can do. It is what it is **not allowed** to do.
 
 ```bash
 python amma_tool.py                 # the tool alone, with no AI involved
-python -m pytest -q tests           # 92 tests: ranges, boundaries, units, bad input, contract
+python -m pytest -q tests           # 93 tests: ranges, boundaries, units, bad input, contract
 python amma_agents.py --languages   # the 49-region language coverage table
 python amma_agents.py --routing     # each mother's language, and whether it is certain or a guess
 ```
