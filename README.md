@@ -203,8 +203,7 @@ language a worried mother can understand — in her language.**
 
 ## Real output
 
-From an actual run of the submitted version (22 September). Lakshmi, week 24, Bihar.
-Since the review on 24 September, "Next check" no longer gives a number of weeks: it asks the doctor.
+From an actual run on Microsoft Foundry, 24 September 2026, after the review fixes. Lakshmi, week 24, Bihar.
 
 **The tool returns** (simplified from its JSON):
 
@@ -215,27 +214,36 @@ ferritin         18 ng/mL    expected 30-300      LOW
 unchecked        none
 ```
 
-**FOR THE MOTHER** — Bihar · Hindi · *[phone country code (+91)]*
+**FOR THE MOTHER** — Bihar · Hindi · *[phone country code (+91)] a guess - she is asked to confirm*
 
-> डॉक्टर से पूछने के प्रश्न:
-> 1. मेरा हीमोग्लोबिन 9.8 और फेरिटिन 18 कम हैं, क्या यह आयरन की कमी दिखाता है, और इसके लिए मुझे कौन सा इलाज या सप्लीमेंट चाहिए?
-> 2. मेरा फास्टिंग ग्लूकोज 105 है, क्या गर्भावस्था में शुगर की आगे जांच या अलग निगरानी की जरूरत है?
-> 3. इन कम और बढ़े हुए मानों की वजह से बच्चे और मेरी सेहत पर क्या असर हो सकता है, और किन लक्षणों पर मुझे तुरंत आपसे संपर्क करना चाहिए?
+> यह भाषा आपके लिए चुनी गई है। अगर आप चाहें, तो किसी दूसरी भाषा में भी पूछ सकती हैं।
 >
-> अगली जांच: 2 से 4 हफ्तों में दोबारा जांच के बारे में डॉक्टर से बात करें।
+> अपने डॉक्टर से पूछने के सवाल
+> 1. मेरा haemoglobin 9.8 g/dL है, जो 10.5 से 15.0 g/dL की सीमा से कम है। इसका कारण क्या हो सकता है और मुझे क्या जाँच या देखभाल चाहिए?
+> 2. मेरा fasting glucose 105.0 mg/dL है, जो 60 से 92 mg/dL की सीमा से ऊपर है। क्या इसे दोबारा जाँचना चाहिए, और इसका मेरे गर्भावस्था की देखभाल पर क्या असर पड़ सकता है?
+> 3. मेरा ferritin 18.0 ng/mL है, जो 30 से 300 ng/mL की सीमा से कम है। क्या यह कम iron stores की ओर इशारा करता है, और आगे क्या देखना चाहिए?
+>
+> अगली जाँच: कृपया अपने डॉक्टर से पूछें कि इन जाँचों को फिर से कब दोहराना उचित होगा।
 >
 > यह जानकारी है, चिकित्सीय सलाह नहीं। कृपया अपने डॉक्टर से चर्चा करें।
+
+The first line tells her the language was chosen for her and that she can ask for another.
 
 **FOR HER DOCTOR** — English
 
 > **Questions for your doctor**
-> 1. My haemoglobin is low at 9.8 g/dL; could this mean anaemia in week 24, and what treatment do you recommend?
-> 2. My ferritin is low at 18 ng/mL; do I need an iron supplement, and how should I take it?
-> 3. My fasting glucose is high at 105 mg/dL; do I need more testing for gestational diabetes?
+> 1. What could be causing my low haemoglobin of 9.8 g/dL and low ferritin of 18.0 ng/mL in the second trimester?
+> 2. What does my high fasting glucose of 105.0 mg/dL mean for my pregnancy, and what should be checked next?
+> 3. How do these results fit together with my pregnancy at week 24, and is there anything else you want to review?
 >
-> **Next check:** please ask about repeating these tests in 2 to 4 weeks.
+> **Food note:** Try to eat regular, balanced everyday meals with a variety of foods, including iron-rich foods and foods with fibre, and discuss your usual diet with your doctor.
+>
+> **Next check:** Please ask your doctor when these tests should be repeated.
 >
 > *This is information, not medical advice. Please discuss with your doctor.*
+
+The deployed Foundry workflow, run the same day, produced the same shape of output. It received only
+"Report R-001" and "Report R-002", never a name, and never the in-range TSH and vitamin D values.
 
 Note what it does **not** say: it never states a diagnosis. *"Could this mean anaemia?"* is a
 **question she asks her doctor** — she is allowed to ask it; the agent is not allowed to answer it.
@@ -354,8 +362,6 @@ name; it no longer receives it.
 - **Synthetic data only.** No real patient data has been used.
 - **One urgent rule only.** Haemoglobin below 7.0 is escalated. Other urgent thresholds, and danger
   symptoms such as bleeding or a severe headache, are not handled yet. A clinician must define them.
-- **The 24 September changes to the agents' instructions have not yet been re-run on Foundry.** The
-  tool and the data contract are verified by the tests; the new wording of the agents' output is not.
 
 This is a prototype, not a medical device.
 
